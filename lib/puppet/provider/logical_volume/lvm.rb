@@ -17,6 +17,14 @@ Puppet::Type.type(:logical_volume).provide :lvm do
         elsif @resource[:initial_size]
             args.push('--size', @resource[:initial_size])
         end
+        if @resource[:extents]
+            args.push('--extents', @resource[:extents])
+        end
+
+        if !@resource[:extents] and !@resource[:size]
+            args.push('--extents', '100%FREE')
+        end
+
         args << @resource[:volume_group]
         lvcreate(*args)
     end
@@ -82,17 +90,17 @@ Puppet::Type.type(:logical_volume).provide :lvm do
         end
 
         if not resizeable
-            fail( "Decreasing the size requires manual intervention (#{size} < #{current_size})" )
+            fail( "Decreasing the size requires manual intervention (#{new_size} < #{current_size})" )
         else
             ## Check if new size fits the extend blocks
             if new_size_bytes * lvm_size_units[new_size_unit] % vg_extent_size != 0
-                fail( "Cannot extend to size #{size} because VG extent size is #{vg_extent_size} KB" )
+                fail( "Cannot extend to size #{new_size} because VG extent size is #{vg_extent_size} KB" )
             end
 
-            lvextend( '-L', new_size, path) || fail( "Cannot extend to size #{size} because lvextend failed." )
+            lvextend( '-L', new_size, path) || fail( "Cannot extend to size #{new_size} because lvextend failed." )
 
             if /TYPE=\"(\S+)\"/.match(blkid(path)) {|m| m =~ /ext[34]/}
-              resize2fs( path) || fail( "Cannot resize file system to size #{size} because resize2fs failed." )
+              resize2fs( path) || fail( "Cannot resize file system to size #{new_size} because resize2fs failed." )
             end
 
         end
