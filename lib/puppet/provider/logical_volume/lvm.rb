@@ -1,14 +1,17 @@
 Puppet::Type.type(:logical_volume).provide :lvm do
     desc "Manages LVM logical volumes"
 
-    commands :lvcreate  => 'lvcreate',
-             :lvremove  => 'lvremove',
-             :lvextend  => 'lvextend',
-             :lvs       => 'lvs',
-             :resize2fs => 'resize2fs',
-             :umount    => 'umount',
-             :blkid     => 'blkid',
-             :dmsetup   => 'dmsetup'
+    commands :lvcreate   => 'lvcreate',
+             :lvremove   => 'lvremove',
+             :lvextend   => 'lvextend',
+             :lvs        => 'lvs',
+             :resize2fs  => 'resize2fs',
+             :umount     => 'umount',
+             :blkid      => 'blkid',
+             :dmsetup    => 'dmsetup'
+
+    optional_commands :xfs_growfs => 'xfs_growfs',
+                      :resize4fs  => 'resize4fs'
 
     def create
         args = ['-n', @resource[:name]]
@@ -23,6 +26,14 @@ Puppet::Type.type(:logical_volume).provide :lvm do
 
         if !@resource[:extents] and !@resource[:size]
             args.push('--extents', '100%FREE')
+        end
+
+        if @resource[:stripes]
+            args.push('--stripes', @resource[:stripes])
+        end
+
+        if @resource[:stripesize]
+            args.push('--stripesize', @resource[:stripesize])
         end
 
         args << @resource[:volume_group]
@@ -99,8 +110,13 @@ Puppet::Type.type(:logical_volume).provide :lvm do
 
             lvextend( '-L', new_size, path) || fail( "Cannot extend to size #{new_size} because lvextend failed." )
 
-            if /TYPE=\"(\S+)\"/.match(blkid(path)) {|m| m =~ /ext[34]/}
+            blkid_type = blkid(path)
+            if command(:resize4fs) and blkid_type =~ /\bTYPE=\"(ext4)\"/
+              resize4fs( path) || fail( "Cannot resize file system to size #{new_size} because resize2fs failed." )
+            elsif blkid_type =~ /\bTYPE=\"(ext[34])\"/
               resize2fs( path) || fail( "Cannot resize file system to size #{new_size} because resize2fs failed." )
+            elsif blkid_type =~ /\bTYPE=\"(xfs)\"/
+              xfs_growfs( path) || fail( "Cannot resize filesystem to size #{new_size} because xfs_growfs failed." )
             end
 
         end
